@@ -65,7 +65,7 @@ class TreeView(ttk.Treeview):
 		self.bind("<MouseWheel>"		, lambda event: self._onTreeScrolly(*("scroll", 1 if event.delta < 0 else -1, "units")), add = "+")
 		self.bind("<Button-2>"			, lambda event: self._middle_mouse_button(event, True), add = "+")
 		self.bind("<ButtonRelease-2>"	, lambda event: self._middle_mouse_button(event, False), add = "+")
-		self.bind("<Button-3>"			,  self._onRightClick, add = "+")
+		self.bind("<Button-3>"			, self._onRightClick, add = "+")
 		
 		self.bind("<Control-z>", lambda event: self._undo(), add = "+")
 		self.bind("<Control-y>", lambda event: self._redo(), add = "+")
@@ -101,9 +101,20 @@ class TreeView(ttk.Treeview):
 			self.dataColumns[column]["colanchor"]		= self.dataColumns[column]["colanchor"]		if self.dataColumns[column].get("colanchor")		!= None else tk.CENTER
 			self.dataColumns[column]["editable"]		= self.dataColumns[column]["editable"]		if self.dataColumns[column].get("editable")		!= None else True
 			
-			self.heading(column, text = self.dataColumns[column]["text"], anchor = self.dataColumns[column]["headanchor"])
+			self.heading(column, text = self.dataColumns[column]["text"], anchor = self.dataColumns[column]["headanchor"], command = lambda column = column: self.treeview_sort_column(column, False))
 			self.column(column, stretch = self.dataColumns[column]["stretch"], width = self.dataColumns[column]["width"], anchor = self.dataColumns[column]["colanchor"])
+	
+	
+	def treeview_sort_column(self, col, reverse):
+		l = [(self.set(k, col), k) for k in self.get_children('')]
+		l.sort(reverse=reverse)
 		
+		# rearrange items in sorted positions
+		for index, (val, k) in enumerate(l):
+			self.move(k, '', index)
+		
+		# reverse sort next time
+		self.heading(col, command=lambda: self.treeview_sort_column(col, not reverse))
 		
 	def set_styles(self):
 		self.styles = ttk.Style(self.master)
@@ -152,7 +163,7 @@ class TreeView(ttk.Treeview):
 	def have_children(self, rowid):
 		return len(self.get_children(rowid)) > 0
 	
-	def bind(self, sequence, func, add = None):
+	def bind(self, sequence, func, add=None):
 		def _substitute(*args):
 			e = lambda: None #simplest object with __dict__
 			e.data = eval(args[0])
@@ -166,11 +177,41 @@ class TreeView(ttk.Treeview):
 		else:
 			super().bind(sequence, func, add)
 	
-	def insert(self, parent, index, iid=None, **kw):
+	def insert(self, parent, index, iid = None, **kw):
 		self.newestItem = iid if iid != None else self.newestItem
 		self.newestChild = iid if parent != "" else self.newestChild
-		return super().insert(parent, index, iid, **kw)
+		
+		if("values" in kw):
+			kw["values"] = self.handleNewLine("\n", "\\n", kw["values"])
+		
+		result = super().insert(parent, index, iid, **kw)
+		
+		if("values" in result):
+			result["values"] = self.handleNewLine("\\n", "\n", result["values"])
+		
+		return result
 	
+	def handleNewLine(self, str1, str2, array):
+		lst = []
+		for val in array:
+			if(isinstance(val, str) and str1 in val):
+				val = val.replace(str1, str2)
+			lst.append(val)
+		return lst
+	
+	def set(self, iid, column=None, value=None):
+		
+		# handeling new line
+		if(value and isinstance(value, str)):
+			value = value.replace("\n", "\\n")
+		
+		result = super().set(iid, column, value)
+		
+		# handeling new line
+		if(column and not value and isinstance(result, str)):
+			result = result.replace("\\n", "\n")
+			
+		return result
 	
 	def set_options(self, editableTree = None, editableParents = None, editableChildren = None, tooltips = None):
 		self.TreeIsEditable 		= editableTree 		if editableTree 		!= None else self.TreeIsEditable
@@ -220,6 +261,7 @@ class TreeView(ttk.Treeview):
 					parents = (parents + 1)*3*self.charwidth
 				else:
 					text = self.set(rowid, column)
+					
 				#if(self.tipwindow == None):
 				if(self.font.measure(text) + parents > self.column(column, "width")):
 					self.tipwindow = ToolTip(event, text)
@@ -354,6 +396,13 @@ class TreeView(ttk.Treeview):
 		if(popupType == "event"):
 			return
 			
+		elif(popupType == "tag"):
+			tag = self.dataColumns[nextcolmnid].get("tag")
+			if(self.tag_has(tag, rowid)):
+				self.removeTag(rowid, tag)
+			else:
+				self.addTag(rowid, tag)
+			
 		elif(popupType == "combobox"):
 			self.widgetPopup = self.ComboBoxPopup(self, rowid, column, justify = self.TranslateTkVals(self.dataColumns[nextcolmnid]["colanchor"], "1d"))
 			
@@ -366,6 +415,15 @@ class TreeView(ttk.Treeview):
 		else:
 			self.widgetPopup = self.EntryPopup(self, rowid, column, justify = self.TranslateTkVals(self.dataColumns[nextcolmnid]["colanchor"], "1d"))
 	
+	def addTag(self, rowid, tag):
+		taglst = list(self.item(rowid, "tag")); taglst.append(tag)
+		self.item(rowid, tag = taglst)
+		
+		
+	def removeTag(self, rowid, tag):
+		taglst = list(self.item(rowid, "tag")); taglst.remove(tag)
+		self.item(rowid, tag = taglst)
+		
 	
 	def TranslateTkVals(self, val, desired_type):
 		if(desired_type == "2d"):
@@ -1152,9 +1210,9 @@ def setScrollBar(widget, x = 0, y = 0):
 class ToolTip(ttk.tkinter.Toplevel):
 	
 	def __init__(self, event, text = False):
-		#print(event.widget.widgetName)
 		super().__init__()
 		self.after(1000, self.init)
+		self.x = None; self.y = None
 		self.withdraw()
 		self.event = event
 		self.text = text
@@ -1164,6 +1222,7 @@ class ToolTip(ttk.tkinter.Toplevel):
 	def init(self):
 		if(not self.text):
 			self.get_value()
+			
 		if(self.eval_mouse_pos()):
 			self.show()
 		
@@ -1181,11 +1240,6 @@ class ToolTip(ttk.tkinter.Toplevel):
 			self.column = self.event.widget.identify_column(self.event.x)
 			self.rowid = self.event.widget.identify_row(self.event.y)
 			self.x, self.y, self.width, self.height = self.event.widget.bbox(self.rowid, self.column)
-			
-#		elif(self.event.widget.widgetName in ("ttk::button", "ttk::menubutton", "ttk::label", "ttk::entry")):
-#			self.x, self.y, self.width, self.height = self.geometry()
-			#print(self.geometry())
-		
 		else:
 			self.x, self.y, self.width, self.height = self.geometry()
 		
@@ -1194,19 +1248,14 @@ class ToolTip(ttk.tkinter.Toplevel):
 		y = self.y + (self.event.widget.winfo_rooty() if self.event.widget.master == None else self.event.widget.master.winfo_rooty()) + self.height
 		self.wm_overrideredirect(1)
 		self.wm_geometry("+%d+%d" % (x, y))
-		label = ttk.Label(self, text=self.text, justify=tk.LEFT)#, relief = tk.RAISED)#, font = font.nametofont("TkTooltipFont"))
+		label = ttk.Label(self, text = self.text, justify = tk.LEFT)#, relief = tk.RAISED)#, font = font.nametofont("TkTooltipFont"))
 		label.pack()
 		self.deiconify()
 		
 	def eval_mouse_pos(self):
 		x = self.event.widget.winfo_pointerx() - (self.event.widget.winfo_rootx() if self.event.widget.master == None else self.event.widget.master.winfo_rootx())
 		y = self.event.widget.winfo_pointery() - (self.event.widget.winfo_rooty() if self.event.widget.master == None else self.event.widget.master.winfo_rooty())
-		#print(str(0) + "<" + str(x - self.x) + "<" + str(self.width) + " " + str(0) + "<" + str(y - self.y) + "<" + str(self.height))
-		#print(" " + str(self.x) + "<" + str(x) + "<" + str(self.x + self.width) + "  " + str(self.y) + "<" + str(y) + "<" + str(self.y + self.height))
-		#print(str(x) + ">" + str(self.x) + "  " + str(x) + "<" + str(self.x + self.width) + "    " + str(y) + ">" + str(self.y) + "  " + str(y) + "<" + str(self.y + self.height))
-		#print()
-		if(not self.dead):
-			#print(x > self.x and x < self.x + self.width and y > self.y and y < self.y + self.height)
+		if(not self.dead and self.x != None and self.y != None):
 			return x > self.x and x < self.x + self.width and y > self.y and y < self.y + self.height
 		else:
 			return False
@@ -1224,7 +1273,17 @@ class ToolTip(ttk.tkinter.Toplevel):
 	def destroy(self):
 		super().destroy()
 		self.dead = True
-		
+
+#--------------------------------------------------Menue-----------------------------------------------------------------------
+
+
+def styleMenue(master, menubar):
+	stylemenu = ttk.tkinter.Menu(menubar, tearoff = 0)
+	menubar.add_cascade(label = "Style", menu = stylemenu)
+	
+	for style in sorted(ttk.Style(master).theme_names()):
+		stylemenu.add_command(label = style.capitalize(), command = lambda style = style, master = master:ttk.Style(master).theme_use(style))
+	
 
 #--------------------------------------------------Misc-----------------------------------------------------------------------
 
