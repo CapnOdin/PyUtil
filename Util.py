@@ -59,7 +59,8 @@ def str_in_Error(string, Error, fun, *args):
 		if(string in str(e)):
 			return True
 	return False
-	
+
+
 def getScriptPath():
 	return os.path.dirname(os.path.realpath(sys.argv[0]))
 
