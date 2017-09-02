@@ -182,12 +182,12 @@ class TreeView(ttk.Treeview):
 		self.newestChild = iid if parent != "" else self.newestChild
 		
 		if("values" in kw):
-			kw["values"] = self.handleNewLine("\n", "\\n", kw["values"])
+			kw["values"] = self.handleNewLine("\n", "_._", kw["values"])
 		
 		result = super().insert(parent, index, iid, **kw)
 		
 		if("values" in result):
-			result["values"] = self.handleNewLine("\\n", "\n", result["values"])
+			result["values"] = self.handleNewLine("_._", "\n", result["values"])
 		
 		return result
 	
@@ -203,13 +203,13 @@ class TreeView(ttk.Treeview):
 		
 		# handeling new line
 		if(value and isinstance(value, str)):
-			value = value.replace("\n", "\\n")
+			value = value.replace("\n", "_._")
 		
 		result = super().set(iid, column, value)
 		
 		# handeling new line
 		if(column and not value and isinstance(result, str)):
-			result = result.replace("\\n", "\n")
+			result = result.replace("_._", "\n")
 			
 		return result
 	
